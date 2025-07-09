@@ -46,9 +46,7 @@ namespace TheEmpirePlugins.Items
             
         };
 
-        private static readonly string AudioDirectory = Path.Combine(Paths.Config, "FireAudio");
-        private readonly Dictionary<Player, AudioPlayer> _audioPlayers = new();
-        private readonly Dictionary<Player, SchematicObject> _schematicsPlayers = new();
+        private static readonly string AudioDirectory = Path.Combine(Paths.Configs, "FireAudio");
 
 
 
@@ -57,8 +55,6 @@ namespace TheEmpirePlugins.Items
             Exiled.Events.Handlers.Player.ReloadingWeapon += OnReloading;
             Exiled.Events.Handlers.Item.ChangingAttachments += ChangingAttachent;
             Exiled.Events.Handlers.Player.Shooting += OnShooting;
-            Exiled.Events.Handlers.Player.Destroying += OnPlayerDestroyed;
-            Exiled.Events.Handlers.Player.ChangingItem += OnChanging;
             base.SubscribeEvents();
 
             InitializeAudio();
@@ -68,14 +64,7 @@ namespace TheEmpirePlugins.Items
             Exiled.Events.Handlers.Player.ReloadingWeapon -= OnReloading;
             Exiled.Events.Handlers.Item.ChangingAttachments -= ChangingAttachent;
             Exiled.Events.Handlers.Player.Shooting -= OnShooting;
-            Exiled.Events.Handlers.Player.Destroying -= OnPlayerDestroyed;
-            Exiled.Events.Handlers.Player.ChangingItem -= OnChanging;
 
-            foreach (var audioPlayer in _audioPlayers.Values)
-            {
-                audioPlayer?.Destroy();
-            }
-            _audioPlayers.Clear();
 
             base.UnsubscribeEvents();
         }
@@ -88,19 +77,8 @@ namespace TheEmpirePlugins.Items
             }
         }
 
-        protected void D(SpawningItemEventArgs ev)
-        {
-            if (Check(ev.))
-        }
 
-        private void OnPlayerDestroyed(DestroyingEventArgs ev)
-        {
-            if (_audioPlayers.TryGetValue(ev.Player, out var audioPlayer))
-            {
-                audioPlayer?.Destroy();
-                _audioPlayers.Remove(ev.Player);
-            }
-        }
+
 
         protected void ChangingAttachent(ChangingAttachmentsEventArgs ev)
         {
@@ -108,26 +86,7 @@ namespace TheEmpirePlugins.Items
             ev.IsAllowed = false;
         }
 
-        protected override void OnChanging(ChangingItemEventArgs ev)
-        {
-            
-            if (_schematicsPlayers.ContainsKey(ev.Player))
-            {
-                _schematicsPlayers[ev.Player].Destroy();
-                _schematicsPlayers.Remove(ev.Player);
-            }
-            if (!Check(ev.Item)) return;
-            
-            var schematic = ObjectSpawner.SpawnSchematic("ForFire", position: ev.Player.Position);
-            if (schematic == null)
-            {
-                Log.Error("Schematic with name 'ForFire' not found");
-                return;
-            }
-            _schematicsPlayers[ev.Player] = schematic;
-            schematic.transform.parent = ev.Player.Transform;
-            base.OnChanging(ev);
-        }
+        
         
 
 
@@ -140,7 +99,7 @@ namespace TheEmpirePlugins.Items
             base.OnReloading(ev);
         }
 
-        protected override void OnShooting(ShootingEventArgs ev)
+        private void OnShooting(ShootingEventArgs ev)
         {
             if (!Check(ev.Player.CurrentItem))
                 return;
@@ -154,63 +113,28 @@ namespace TheEmpirePlugins.Items
                     return;
                 }
 
-                if (_audioPlayers.TryGetValue(ev.Player, out var oldAudio))
-                {
-                    try
-                    {
-                        if (oldAudio != null && oldAudio.gameObject != null)
-                        {
-                            oldAudio.Destroy();
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.Error($"Error destroying old audio: {ex}");
-                    }
-                    finally
-                    {
-                        _audioPlayers.Remove(ev.Player);
-                    }
-                }
+                
 
-                if (!_schematicsPlayers.TryGetValue(ev.Player, out var schematic) || schematic == null)
-                {
-                    Log.Error("Schematic not found for player");
-                    return;
-                }
 
                 var owner = ev.Player != null ? new List<ReferenceHub> { ev.Player.ReferenceHub } : null;
-                AudioPlayer audio = null;
 
                 try
                 {
-                    audio = AudioPlayer.Create(
-                        $"GunFire_{ev.Player.Id}_{DateTime.UtcNow.Ticks}",
-                        "Fire",
-                        owners: owner,
-                        onIntialCreation: p =>
-                        {
-                            if (p != null && schematic != null && schematic.transform != null)
-                            {
-                                p.transform.parent = schematic.transform;
-                                var speaker = p.AddSpeaker("Fire", minDistance: 2.5f, maxDistance: 20f, volume: 1f);
-                                if (speaker != null)
-                                {
-                                    speaker.transform.parent = schematic.transform;
-                                    speaker.transform.localPosition = Vector3.zero;
-                                }
-                            }
-                        });
-
-                    if (audio != null)
+                    var audioPlayer = AudioPlayer.CreateOrGet($"{UnityEngine.Random.Range(1, 10000)}", soundPath, onIntialCreation: p =>
                     {
-                        _audioPlayers[ev.Player] = audio;
+                        var speaker = p.AddSpeaker($"Main{UnityEngine.Random.Range(1, 10000)}", isSpatial: true, minDistance: 1f, maxDistance: 15f);
+                        speaker.transform.SetParent(ev.Player.Transform, false);
+                    });
+
+                    if (audioPlayer != null)
+                    {
+                        Log.Info(audioPlayer.transform.parent.position);
+                        audioPlayer.AddClip(soundPath, loop: false, volume: 1.5f, destroyOnEnd: true);
                     }
                 }
                 catch (Exception ex)
                 {
                     Log.Error($"Error creating audio: {ex}");
-                    audio?.Destroy();
                 }
             }
             catch (Exception ex)
@@ -218,7 +142,6 @@ namespace TheEmpirePlugins.Items
                 Log.Error($"Error in OnShooting: {ex}");
             }
 
-            base.OnShooting(ev);
         }
 
     }
